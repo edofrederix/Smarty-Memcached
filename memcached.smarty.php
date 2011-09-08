@@ -1,8 +1,10 @@
 <?php
 
   /*
-  Smarty Memcached - a Wrapper to Smarty to allow proper memcache-based caching
-  Example code, part of Smarty Memcached
+  Smarty Memcached - a Wrapper to Smarty to allow proper memcache-based
+  caching
+
+  Class code, part of Smarty Memcached
 
   Written by:
 
