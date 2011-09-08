@@ -6,10 +6,93 @@ Written by:
 Edo Frederix
 edofrederix@gmail.com
 
----- Summary -----------------------------------------------------------------
+---- Overview ----------------------------------------------------------------
 
-http://edoxy.net/
+I have only started using Smarty recently. I quickly discovered its benifits.
+You can create very compact templates, with dynamic behavior. Smarty does not
+just stop with having the capability to insert PHP variables into the
+template. It allows for integrating complex structures into your template,
+such as for, foreach and if/else statements.
 
+Smarty also comes with caching capabilities. If cache is enabled, Smarty will
+store compiled templates on disk, and serve future requests from that cache,
+rather than having to compile the template again. On php side, this also
+allows you to prevent having to fetch the same data from the database again,
+and having to perform the same redundant calculations all over again - all for
+the same result.
+
+That said, the Smarty cache mechanism still comes with some drawbacks. It
+saves its compiled templates on disk, which may cause IO overhead. To solve
+this however, Smarty offers the possibility to write your own cache handler
+function. In Smarty 2 this handler can be called by setting the
+$cache_handler_func to your own custom memcached function. In Smarty 3, this
+behavior is being reported as broken, and you need to write your own plugin
+file to get memcached going. According to this forum thread it looks like
+Smarty 3.1 will come with native Memcache capabilities. That's nice, but far
+away.
+
+From a performance point of view, the available Smarty Memcached plugins are
+not sufficient. Smarty keeps track of the cached files by having shadow files
+on disk. This goes hand in hand with the fact that the $cache_handler_func
+variable does not provide a check action. In other words, Smarty will tell
+your application when cache becomes invalid and when not. So Smarty refuses to
+make use of the Memcached TTL parameter.
+
+So I have written my own Smarty class extension: Smarty Memcached. The goal of
+this is absolute speed and robustness, with no compromise. This does not come
+for free. The price to pay is that we lose Smarty's {nocache} functionality,
+as we are directly storing compiled templates into memcached, and directly
+serving these templates from memcached. So if you still want to maintain a
+certain level of dynamic behavior, this class is not the way to go.
+
+Smarty Memcached replaces the default way of fetching a template, although you
+could still use $smarty->fetch of course. First, you ask Smarty Memcached to
+fetch a template from memcached, by specifying a key to the memcached entry.
+If it exists, Memcached_getCache($key) will add its content to
+$smarty->output, or will return the content if you have specified to do so:
+$tpl = Memcached_getCache($key, 'return'). If the template does not exist,
+Memcached_getCache() will return false, which allows you to generate the
+cache.
+
+If this is the case, you run your scripts, make all your calculations and
+fetch all your data. You assign this data to Smarty variables, just like you
+would normally do. In stead of calling the Smarty fetch() class function, you
+now call $smarty->Memcached_fetch($key, $tpl, $ttl). This is just a simple
+wrapper to the original fetch() function. In addition to triggering all Smarty
+functionality, it will also save the compiled template to Memcached. The
+function will store the template in $smarty->output, or return it.
+
+On heavy loaded servers of clusters, this mechanism might lead to problems. If
+the cache is due, all simultaneous threads running the same request will run
+their code 'live'. They will all calculate the same data, and hammer the MySQL
+database server, if MySQL queries are in your code. This will keep on going
+until the first thread finishes the request and re-establishes the cache
+entry. Of course, for small websites this is not a problem, as we might only
+have one request every minute. For big websites running a million page views
+an hour - and that is of course why we are using cache - this is a life
+threatening situation. A sudden burst of requests on a MySQL server might
+cause severe memory usage, perhaps even a swapping server.
+
+To prevent this, Smarty Memcached is using a lock mechanism. When a cache
+entry is expired, the first thread to notice this will create a lock file in
+memcache. Other threads will check for this, and wait until the first thread
+is ready. If the first thread takes too long, all other threads will die. This
+policy is grown from the fact that it is more important to not crash the
+webservers or database servers, rather then serving content at all cost.
+
+Here is a small example script, in which we use Smarty Memcached to show a
+template:
+
+  $smarty = New Smarty_Memcached();  
+  $key = "cached-template";
+  if(!$smarty->Memcached_getCache($key)) {
+  
+    $data = do_fancy_stuff();
+    $smarty->assign('data', $data); 
+    $smarty->Memcached_fetch($key, './tpl/template.tpl', 'long');
+  }
+
+For an example with more explanation, see example.php.
 
 ---- License -----------------------------------------------------------------
 
