@@ -52,8 +52,20 @@
     $smarty->Memcached_fetch($key, './tpl/template.tpl', 'long');
   
   }
-  
+
   /* Either Memcached_getCache or Memcached_fetch has assigned our template to
   $smarty-output. We can now echo it. */
   echo $smarty->output;
+  
+  /* In stead of letting Smarty Mecached assign its content to
+  $smarty->output, you may also let it return its output, like this: */
+  $key = "cached-template2";
+  if(!$tpl = $smarty->Memcached_getCache($key, 'return')) {
+ 	     
+    $smarty->assign('data', $data);
+    $tpl = $smarty->Memcached_fetch($key, './tpl/template2.tpl', 'long', 'return');
+  
+  }
+  
+  echo $tpl;  
 ?>
